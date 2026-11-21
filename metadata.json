@@ -1,0 +1,6 @@
+{
+  "name": "PrintDesk",
+  "description": "Aplikasi manajemen data percetakan lengkap dengan Google Drive, Gmail, papan status terpadu, preview dokumen cetak, dan jadwal pengambilan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

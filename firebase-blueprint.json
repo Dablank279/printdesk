@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil pengguna staf atau pemilik percetakan PrintDesk",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 160 },
+        "photoUrl": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "PrintOrder": {
+      "title": "PrintOrder",
+      "description": "Data order percetakan lengkap beserta spesifikasi, file Google Drive, DP, status, dan riwayat email client & percetakan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderCode": { "type": "string", "minLength": 3, "maxLength": 40 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "clientName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "clientPhone": { "type": "string", "maxLength": 32 },
+        "clientEmail": { "type": "string", "maxLength": 160 },
+        "printType": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "category": {
+          "type": "string",
+          "enum": ["Dokumen", "Banner", "Spanduk", "Kartu Nama", "Brosur", "Undangan", "Stiker", "Lainnya"]
+        },
+        "specs": { "type": "object" },
+        "files": { "type": "array" },
+        "totalPrice": { "type": "number" },
+        "dpAmount": { "type": "number" },
+        "remainingAmount": { "type": "number" },
+        "workStatus": {
+          "type": "string",
+          "enum": ["belum_dp", "dalam_proses", "selesai"]
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["belum_dp", "sudah_dp", "lunas"]
+        },
+        "pickupAt": { "type": "string", "minLength": 10, "maxLength": 40 },
+        "pickedUp": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "emailHistory": { "type": "array" },
+        "vendorSentAt": { "type": "string", "maxLength": 40 },
+        "vendorEmailHistory": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "orderCode",
+        "clientName",
+        "clientPhone",
+        "printType",
+        "category",
+        "specs",
+        "files",
+        "totalPrice",
+        "dpAmount",
+        "remainingAmount",
+        "workStatus",
+        "paymentStatus",
+        "pickupAt",
+        "pickedUp",
+        "emailHistory",
+        "vendorEmailHistory",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PrintClient": {
+      "title": "PrintClient",
+      "description": "Data pelanggan percetakan untuk autocomplete dan riwayat order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 160 },
+        "company": { "type": "string", "maxLength": 120 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ownerId", "name", "phone", "createdAt", "updatedAt"]
+    },
+    "ShopSettings": {
+      "title": "ShopSettings",
+      "description": "Pengaturan profil usaha, template email client & percetakan, logo, dan folder utama Google Drive",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "shopName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "shopAddress": { "type": "string", "maxLength": 240 },
+        "shopPhone": { "type": "string", "maxLength": 40 },
+        "shopEmail": { "type": "string", "maxLength": 160 },
+        "logoDataUrl": { "type": "string", "maxLength": 120000 },
+        "driveRootFolder": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "emailSubjectTemplate": { "type": "string", "maxLength": 200 },
+        "emailBodyTemplate": { "type": "string", "maxLength": 2000 },
+        "vendorName": { "type": "string", "maxLength": 120 },
+        "vendorEmail": { "type": "string", "maxLength": 320 },
+        "vendorCcEmail": { "type": "string", "maxLength": 320 },
+        "vendorEmailBodyTemplate": { "type": "string", "maxLength": 2000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "shopName", "driveRootFolder", "emailSubjectTemplate", "emailBodyTemplate", "vendorEmail", "vendorEmailBodyTemplate", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Profil pengguna pemilik workspace PrintDesk"
+    },
+    "/users/{userId}/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/PrintOrder" },
+      "description": "Daftar order percetakan milik pengguna"
+    },
+    "/users/{userId}/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/PrintClient" },
+      "description": "Daftar pelanggan percetakan milik pengguna"
+    },
+    "/users/{userId}/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/ShopSettings" },
+      "description": "Konfigurasi usaha & template email milik pengguna"
+    }
+  }
+}

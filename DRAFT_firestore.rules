@@ -1,0 +1,228 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'photoUrl', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == userId
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 120))
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSpecs(specs) {
+      return specs is map
+        && specs.keys().hasOnly(['paperSize', 'orientation', 'pageCount', 'copies', 'qtyUnit', 'paperMaterial', 'colorMode', 'finishing'])
+        && (!('paperSize' in specs) || (specs.paperSize is string && specs.paperSize.size() <= 60))
+        && (!('orientation' in specs) || (specs.orientation is string && specs.orientation.size() <= 30))
+        && (!('pageCount' in specs) || (specs.pageCount is number && specs.pageCount >= 1 && specs.pageCount <= 100000))
+        && (!('copies' in specs) || (specs.copies is number && specs.copies >= 1 && specs.copies <= 100000))
+        && (!('qtyUnit' in specs) || (specs.qtyUnit is string && specs.qtyUnit.size() <= 30))
+        && (!('paperMaterial' in specs) || (specs.paperMaterial is string && specs.paperMaterial.size() <= 80))
+        && (!('colorMode' in specs) || (specs.colorMode is string && specs.colorMode.size() <= 40))
+        && (!('finishing' in specs) || (specs.finishing is string && specs.finishing.size() <= 120));
+    }
+
+    function isValidFilesArray(files) {
+      return files is list
+        && files.size() <= 20
+        && (files.size() == 0 || (
+          files[0] is map
+          && files[0].id is string && files[0].id.size() >= 1 && files[0].id.size() <= 128
+          && files[0].name is string && files[0].name.size() >= 1 && files[0].name.size() <= 240
+        ));
+    }
+
+    function isValidEmailHistoryArray(history) {
+      return history is list
+        && history.size() <= 50
+        && (history.size() == 0 || (
+          history[0] is map
+          && history[0].id is string && history[0].id.size() >= 1 && history[0].id.size() <= 128
+          && history[0].status is string && history[0].status in ['berhasil', 'gagal']
+        ));
+    }
+
+    function isValidOrder(data, userId, orderId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'orderCode', 'clientName', 'clientPhone', 'printType',
+          'category', 'specs', 'files', 'totalPrice', 'dpAmount', 'remainingAmount',
+          'workStatus', 'paymentStatus', 'pickupAt', 'pickedUp', 'emailHistory',
+          'vendorEmailHistory', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'orderCode', 'clientId', 'clientName', 'clientPhone', 'clientEmail',
+          'printType', 'category', 'specs', 'files', 'totalPrice', 'dpAmount', 'remainingAmount',
+          'workStatus', 'paymentStatus', 'pickupAt', 'pickedUp', 'notes', 'emailHistory',
+          'vendorSentAt', 'vendorEmailHistory', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128 && data.id == orderId
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId == userId
+        && data.orderCode is string && data.orderCode.size() >= 3 && data.orderCode.size() <= 40
+        && (!('clientId' in data) || (data.clientId is string && data.clientId.size() <= 128))
+        && data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 120
+        && data.clientPhone is string && data.clientPhone.size() <= 32
+        && (!('clientEmail' in data) || (data.clientEmail is string && data.clientEmail.size() <= 160))
+        && data.printType is string && data.printType.size() >= 1 && data.printType.size() <= 120
+        && data.category is string && data.category in ['Dokumen', 'Banner', 'Spanduk', 'Kartu Nama', 'Brosur', 'Undangan', 'Stiker', 'Lainnya']
+        && isValidSpecs(data.specs)
+        && isValidFilesArray(data.files)
+        && data.totalPrice is number && data.totalPrice >= 0 && data.totalPrice <= 10000000000
+        && data.dpAmount is number && data.dpAmount >= 0 && data.dpAmount <= 10000000000
+        && data.remainingAmount is number && data.remainingAmount >= 0 && data.remainingAmount <= 10000000000
+        && data.workStatus is string && data.workStatus in ['belum_dp', 'dalam_proses', 'selesai']
+        && data.paymentStatus is string && data.paymentStatus in ['belum_dp', 'sudah_dp', 'lunas']
+        && data.pickupAt is string && data.pickupAt.size() >= 10 && data.pickupAt.size() <= 40
+        && data.pickedUp is bool
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && isValidEmailHistoryArray(data.emailHistory)
+        && (!('vendorSentAt' in data) || (data.vendorSentAt is string && data.vendorSentAt.size() <= 40))
+        && isValidEmailHistoryArray(data.vendorEmailHistory)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClient(data, userId, clientId) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'phone', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'ownerId', 'name', 'phone', 'email', 'company', 'notes', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128 && data.id == clientId
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId == userId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.phone is string && data.phone.size() <= 32
+        && (!('email' in data) || (data.email is string && data.email.size() <= 160))
+        && (!('company' in data) || (data.company is string && data.company.size() <= 120))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSettings(data, userId) {
+      return data.keys().hasAll(['ownerId', 'shopName', 'driveRootFolder', 'emailSubjectTemplate', 'emailBodyTemplate', 'vendorEmail', 'vendorEmailBodyTemplate', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'shopName', 'shopAddress', 'shopPhone', 'shopEmail', 'logoDataUrl', 'driveRootFolder', 'emailSubjectTemplate', 'emailBodyTemplate', 'vendorName', 'vendorEmail', 'vendorCcEmail', 'vendorEmailBodyTemplate', 'updatedAt'])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId == userId
+        && data.shopName is string && data.shopName.size() >= 1 && data.shopName.size() <= 120
+        && (!('shopAddress' in data) || (data.shopAddress is string && data.shopAddress.size() <= 240))
+        && (!('shopPhone' in data) || (data.shopPhone is string && data.shopPhone.size() <= 40))
+        && (!('shopEmail' in data) || (data.shopEmail is string && data.shopEmail.size() <= 160))
+        && (!('logoDataUrl' in data) || (data.logoDataUrl is string && data.logoDataUrl.size() <= 120000))
+        && data.driveRootFolder is string && data.driveRootFolder.size() >= 1 && data.driveRootFolder.size() <= 100
+        && data.emailSubjectTemplate is string && data.emailSubjectTemplate.size() <= 200
+        && data.emailBodyTemplate is string && data.emailBodyTemplate.size() <= 2000
+        && (!('vendorName' in data) || (data.vendorName is string && data.vendorName.size() <= 120))
+        && data.vendorEmail is string && data.vendorEmail.size() <= 320
+        && (!('vendorCcEmail' in data) || (data.vendorCcEmail is string && data.vendorCcEmail.size() <= 320))
+        && data.vendorEmailBodyTemplate is string && data.vendorEmailBodyTemplate.size() <= 2000
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'updatedAt']);
+      allow delete: if false;
+
+      match /orders/{orderId} {
+        allow get: if isValidId(userId) && isValidId(orderId) && isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(orderId)
+          && isOwner(userId)
+          && isValidOrder(incoming(), userId, orderId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(orderId)
+          && isOwner(userId)
+          && isValidOrder(incoming(), userId, orderId)
+          && incoming().id == existing().id
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['workStatus', 'paymentStatus', 'dpAmount', 'remainingAmount', 'pickedUp', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['emailHistory', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['vendorSentAt', 'vendorEmailHistory', 'workStatus', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['orderCode', 'clientId', 'clientName', 'clientPhone', 'clientEmail', 'printType', 'category', 'specs', 'files', 'totalPrice', 'dpAmount', 'remainingAmount', 'workStatus', 'paymentStatus', 'pickupAt', 'pickedUp', 'notes', 'emailHistory', 'vendorSentAt', 'vendorEmailHistory', 'updatedAt'])
+          );
+        allow delete: if isValidId(userId) && isValidId(orderId) && isOwner(userId) && existing().ownerId == request.auth.uid;
+      }
+
+      match /clients/{clientId} {
+        allow get: if isValidId(userId) && isValidId(clientId) && isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(clientId)
+          && isOwner(userId)
+          && isValidClient(incoming(), userId, clientId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(clientId)
+          && isOwner(userId)
+          && isValidClient(incoming(), userId, clientId)
+          && incoming().id == existing().id
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'email', 'company', 'notes', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(clientId) && isOwner(userId) && existing().ownerId == request.auth.uid;
+      }
+
+      match /settings/{settingId} {
+        allow get: if isValidId(userId) && isValidId(settingId) && isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(settingId)
+          && isOwner(userId)
+          && isValidSettings(incoming(), userId)
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(settingId)
+          && isOwner(userId)
+          && isValidSettings(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['shopName', 'shopAddress', 'shopPhone', 'shopEmail', 'logoDataUrl', 'driveRootFolder', 'emailSubjectTemplate', 'emailBodyTemplate', 'vendorName', 'vendorEmail', 'vendorCcEmail', 'vendorEmailBodyTemplate', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(settingId) && isOwner(userId) && existing().ownerId == request.auth.uid;
+      }
+    }
+  }
+}
