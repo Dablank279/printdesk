@@ -130,6 +130,12 @@ export const EmailModal: React.FC<EmailModalProps> = ({
         subject: subject.trim(),
         bodyText,
         attachments,
+        shopBranding: {
+          shopName: settings.shopName,
+          shopAddress: settings.shopAddress,
+          shopPhone: settings.shopPhone,
+          logoDataUrl: settings.logoDataUrl,
+        },
       });
 
       const log: EmailLog = {

@@ -18,16 +18,18 @@ import {
   AlertCircle,
   Loader2,
 } from 'lucide-react';
-import { OrderFile, PrintOrder } from '../types/printdesk';
+import { OrderFile, PrintOrder, ShopSettings } from '../types/printdesk';
 import { formatFileSize } from '../utils/formatters';
 import { getCachedFileBlob, cacheFileBlob } from '../services/storageService';
 import { fetchDriveFileBlob } from '../services/googleDrive';
+import { ShopLogo } from './ShopLogo';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 interface DocumentPreviewModalProps {
   open: boolean;
   order: PrintOrder | null;
+  settings: ShopSettings;
   initialFileIndex?: number;
   accessToken: string | null;
   onClose: () => void;
@@ -37,6 +39,7 @@ interface DocumentPreviewModalProps {
 export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   open,
   order,
+  settings,
   initialFileIndex = 0,
   accessToken,
   onClose,
@@ -536,14 +539,28 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
         {showOverlay && (
           <div className="fixed bottom-4 right-4 z-40 w-72 bg-slate-900/95 text-slate-100 border border-slate-700 rounded-xl p-4 shadow-2xl no-print">
-            <div className="flex items-center justify-between mb-2.5">
-              <span className="text-xs font-semibold uppercase tracking-wider text-orange-400">
-                Spesifikasi Cetak
-              </span>
+            <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2 min-w-0">
+                <ShopLogo
+                  logoDataUrl={settings.logoDataUrl}
+                  shopName={settings.shopName}
+                  size="xs"
+                />
+                <div className="min-w-0">
+                  <span className="block text-[11px] font-semibold uppercase tracking-wider text-orange-400">
+                    Spesifikasi Cetak
+                  </span>
+                  {settings.shopName.trim() && (
+                    <span className="block text-[10px] text-slate-400 truncate">
+                      {settings.shopName.trim()}
+                    </span>
+                  )}
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowOverlay(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </button>

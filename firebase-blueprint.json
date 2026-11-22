@@ -99,11 +99,11 @@
       "type": "object",
       "properties": {
         "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
-        "shopName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "shopName": { "type": "string", "maxLength": 120 },
         "shopAddress": { "type": "string", "maxLength": 240 },
         "shopPhone": { "type": "string", "maxLength": 40 },
         "shopEmail": { "type": "string", "maxLength": 160 },
-        "logoDataUrl": { "type": "string", "maxLength": 120000 },
+        "logoDataUrl": { "type": "string", "maxLength": 300000 },
         "driveRootFolder": { "type": "string", "minLength": 1, "maxLength": 100 },
         "emailSubjectTemplate": { "type": "string", "maxLength": 200 },
         "emailBodyTemplate": { "type": "string", "maxLength": 2000 },

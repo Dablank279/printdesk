@@ -240,8 +240,9 @@ export function buildWhatsAppUrl(order: PrintOrder, shopName: string): string {
     order.remainingAmount > 0
       ? `\nSisa pembayaran: ${formatRupiah(order.remainingAmount)}`
       : '\nStatus pembayaran: Lunas';
+  const shopPart = shopName.trim() ? ` di ${shopName.trim()}` : '';
 
-  const text = `Halo ${order.clientName}, pesanan ${order.orderCode} (${order.printType}) di ${shopName} ${statusText}.\nJadwal pengambilan: ${formatDateTimeId(order.pickupAt)}${remainingText}\n\nTerima kasih!`;
+  const text = `Halo ${order.clientName}, pesanan ${order.orderCode} (${order.printType})${shopPart} ${statusText}.\nJadwal pengambilan: ${formatDateTimeId(order.pickupAt)}${remainingText}\n\nTerima kasih!`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
 
@@ -254,6 +255,7 @@ export function interpolateTemplate(
     .filter((f) => f.webViewLink)
     .map((f) => `- ${f.name}: ${f.webViewLink}`)
     .join('\n');
+  const displayShopName = settings.shopName.trim() || 'PrintDesk';
 
   return template
     .replaceAll('{KodeOrder}', order.orderCode)
@@ -263,7 +265,7 @@ export function interpolateTemplate(
     .replaceAll('{TotalHarga}', formatRupiah(order.totalPrice))
     .replaceAll('{NominalDP}', formatRupiah(order.dpAmount))
     .replaceAll('{SisaPembayaran}', formatRupiah(order.remainingAmount))
-    .replaceAll('{NamaUsaha}', settings.shopName)
+    .replaceAll('{NamaUsaha}', displayShopName)
     .replaceAll('{LinkDrive}', driveLinks || '(Belum ada link Google Drive)');
 }
 
@@ -294,6 +296,7 @@ export function interpolateVendorTemplate(
     .filter((f) => f.webViewLink)
     .map((f) => `- ${f.name}: ${f.webViewLink}`)
     .join('\n');
+  const displayShopName = settings.shopName.trim() || 'PrintDesk';
 
   return template
     .replaceAll('{NamaPercetakan}', settings.vendorName || 'Percetakan')
@@ -306,7 +309,7 @@ export function interpolateVendorTemplate(
     .replaceAll('{finishing}', order.specs.finishing || '-')
     .replaceAll('{catatan}', order.notes || '-')
     .replaceAll('{waktu_pengambilan}', formatDateTimeId(order.pickupAt))
-    .replaceAll('{nama_usaha}', settings.shopName)
+    .replaceAll('{nama_usaha}', displayShopName)
     .replaceAll('{link_drive}', driveLinks || '(Terlampir pada email)');
 }
 

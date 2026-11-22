@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Printer,
   FolderUp,
   Mail,
   Kanban,
@@ -10,8 +9,11 @@ import {
   Sun,
   AlertCircle,
 } from 'lucide-react';
+import { ShopLogo } from './ShopLogo';
 
 interface LoginViewProps {
+  shopName?: string;
+  logoDataUrl?: string;
   onGoogleLogin: () => Promise<void>;
   onEnterLocalMode: () => void;
   isLoggingIn: boolean;
@@ -21,6 +23,8 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
+  shopName,
+  logoDataUrl,
   onGoogleLogin,
   onEnterLocalMode,
   isLoggingIn,
@@ -32,12 +36,17 @@ export const LoginView: React.FC<LoginViewProps> = ({
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-between p-4 sm:p-8">
       <div className="max-w-6xl w-full mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-slate-900 dark:bg-orange-600 text-white flex items-center justify-center">
-            <Printer className="w-5 h-5" />
+          <ShopLogo logoDataUrl={logoDataUrl} shopName={shopName} size="sm" />
+          <div className="min-w-0">
+            <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white block leading-tight">
+              PrintDesk
+            </span>
+            {shopName?.trim() && (
+              <span className="text-xs text-slate-500 dark:text-slate-400 block truncate">
+                {shopName.trim()}
+              </span>
+            )}
           </div>
-          <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-            PrintDesk
-          </span>
         </div>
 
         <button
@@ -98,7 +107,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 Email Gmail & Pengingat Ambil
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                Kirim dokumen ke client lewat Gmail API serta pantau order yang jatuh tempo hari ini atau terlambat.
+                Kirim dokumen ke client maupun order ke percetakan lewat Gmail API serta pantau jatuh tempo pengambilan.
               </p>
             </div>
           </div>
@@ -106,12 +115,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
         <div className="lg:col-span-5">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1.5">
-              Masuk ke PrintDesk
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-              Hubungkan akun Google Anda untuk sinkronisasi database cloud, penyimpanan Google Drive, dan kirim email Gmail.
-            </p>
+            {/* Large Logo above Sign-In Buttons */}
+            <div className="flex flex-col items-center text-center mb-6">
+              <ShopLogo logoDataUrl={logoDataUrl} shopName={shopName} size="xl" />
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-4">
+                {shopName?.trim() ? shopName.trim() : 'Masuk ke PrintDesk'}
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1.5">
+                Hubungkan akun Google Anda untuk sinkronisasi database cloud, Google Drive, dan kirim email Gmail.
+              </p>
+            </div>
 
             {errorMessage && (
               <div className="mb-5 p-3.5 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-300">
@@ -155,7 +168,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </svg>
                 </div>
                 <span className="gsi-material-button-contents">
-                  {isLoggingIn ? 'Menghubungkan ke Google...' : 'Sign in with Google'}
+                  {isLoggingIn ? 'Menghubungkan ke Google...' : 'Masuk dengan Google'}
                 </span>
               </div>
             </button>
@@ -172,7 +185,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               disabled={isLoggingIn}
               className="w-full py-2.5 px-4 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
-              Masuk Mode Lokal (Simpan di Browser)
+              Lanjut Mode Lokal (Simpan di Browser)
             </button>
 
             <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs text-slate-500 dark:text-slate-400">
@@ -188,7 +201,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       </div>
 
       <footer className="max-w-6xl w-full mx-auto text-center text-xs text-slate-500 dark:text-slate-500">
-        PrintDesk — Aplikasi Manajemen Operasional Percetakan
+        {shopName?.trim() ? `${shopName.trim()} · PrintDesk` : 'PrintDesk — Aplikasi Manajemen Operasional Percetakan'}
       </footer>
     </div>
   );

@@ -5,13 +5,13 @@ import {
   CalendarClock,
   Users,
   Settings,
-  Printer,
   LogOut,
   X,
   RefreshCw,
   HardDrive,
 } from 'lucide-react';
 import { AppPage } from '../types/printdesk';
+import { ShopLogo } from './ShopLogo';
 
 interface SidebarProps {
   activePage: AppPage;
@@ -19,6 +19,7 @@ interface SidebarProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
   shopName: string;
+  logoDataUrl?: string;
   userDisplayName: string;
   userEmail: string;
   userPhotoUrl?: string;
@@ -35,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileOpen,
   onCloseMobile,
   shopName,
+  logoDataUrl,
   userDisplayName,
   userEmail,
   userPhotoUrl,
@@ -71,14 +73,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <div className="flex flex-col h-full bg-slate-900 text-slate-100 w-[260px] select-none">
       <div className="px-5 py-5 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-orange-600 text-white flex items-center justify-center shrink-0">
-            <Printer className="w-5 h-5" />
-          </div>
+          <ShopLogo logoDataUrl={logoDataUrl} shopName={shopName} size="sm" />
           <div className="min-w-0">
             <div className="text-base font-bold tracking-tight text-white truncate">
               PrintDesk
             </div>
-            <div className="text-xs text-slate-400 truncate">{shopName}</div>
+            <div className="text-xs text-slate-400 truncate">
+              {shopName.trim() || 'Manajemen Percetakan'}
+            </div>
           </div>
         </div>
         <button

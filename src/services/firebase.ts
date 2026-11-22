@@ -165,8 +165,12 @@ export function handleFirestoreError(
 }
 
 export async function testFirestoreConnection(): Promise<boolean> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    return true;
+  }
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await getDocFromServer(doc(db, 'users', currentUser.uid));
     return true;
   } catch (error) {
     if (

@@ -203,6 +203,12 @@ export const VendorEmailModal: React.FC<VendorEmailModalProps> = ({
         subject: subject.trim(),
         bodyText: finalBody,
         attachments,
+        shopBranding: {
+          shopName: settings.shopName,
+          shopAddress: settings.shopAddress,
+          shopPhone: settings.shopPhone,
+          logoDataUrl: settings.logoDataUrl,
+        },
       });
 
       const log: EmailLog = {

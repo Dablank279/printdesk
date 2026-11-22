@@ -127,11 +127,11 @@ service cloud.firestore {
       return data.keys().hasAll(['ownerId', 'shopName', 'driveRootFolder', 'emailSubjectTemplate', 'emailBodyTemplate', 'vendorEmail', 'vendorEmailBodyTemplate', 'updatedAt'])
         && data.keys().hasOnly(['ownerId', 'shopName', 'shopAddress', 'shopPhone', 'shopEmail', 'logoDataUrl', 'driveRootFolder', 'emailSubjectTemplate', 'emailBodyTemplate', 'vendorName', 'vendorEmail', 'vendorCcEmail', 'vendorEmailBodyTemplate', 'updatedAt'])
         && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId == userId
-        && data.shopName is string && data.shopName.size() >= 1 && data.shopName.size() <= 120
+        && data.shopName is string && data.shopName.size() <= 120
         && (!('shopAddress' in data) || (data.shopAddress is string && data.shopAddress.size() <= 240))
         && (!('shopPhone' in data) || (data.shopPhone is string && data.shopPhone.size() <= 40))
         && (!('shopEmail' in data) || (data.shopEmail is string && data.shopEmail.size() <= 160))
-        && (!('logoDataUrl' in data) || (data.logoDataUrl is string && data.logoDataUrl.size() <= 120000))
+        && (!('logoDataUrl' in data) || (data.logoDataUrl is string && data.logoDataUrl.size() <= 300000))
         && data.driveRootFolder is string && data.driveRootFolder.size() >= 1 && data.driveRootFolder.size() <= 100
         && data.emailSubjectTemplate is string && data.emailSubjectTemplate.size() <= 200
         && data.emailBodyTemplate is string && data.emailBodyTemplate.size() <= 2000

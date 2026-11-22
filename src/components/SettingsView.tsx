@@ -14,7 +14,9 @@ import {
 } from 'lucide-react';
 import { ShopSettings } from '../types/printdesk';
 import { parseEmailRecipients, sendOrderEmailViaGmail } from '../services/gmailApi';
+import { processLogoFile } from '../utils/logoProcessor';
 import { ResetDataModal } from './ResetDataModal';
+import { ShopLogo } from './ShopLogo';
 
 interface SettingsViewProps {
   settings: ShopSettings;
@@ -79,6 +81,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     message: string;
   } | null>(null);
 
+  const [processingLogo, setProcessingLogo] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
   useEffect(() => {
@@ -92,33 +96,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     form.vendorCcEmail || ''
   );
 
-  const handleLogoUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      if (result.length > 105000) {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const maxDim = 220;
-          const ratio = Math.min(maxDim / img.width, maxDim / img.height, 1);
-          canvas.width = Math.round(img.width * ratio);
-          canvas.height = Math.round(img.height * ratio);
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            setForm((prev) => ({
-              ...prev,
-              logoDataUrl: canvas.toDataURL('image/png', 0.85),
-            }));
-          }
-        };
-        img.src = result;
-      } else {
-        setForm((prev) => ({ ...prev, logoDataUrl: result }));
-      }
-    };
-    reader.readAsDataURL(file);
+  const handleLogoUpload = async (file: File) => {
+    setLogoError(null);
+    setProcessingLogo(true);
+    try {
+      const processedDataUrl = await processLogoFile(file);
+      setForm((prev) => ({
+        ...prev,
+        logoDataUrl: processedDataUrl,
+      }));
+      onNotifyToast(
+        'Logo siap digunakan. Klik "Simpan Pengaturan" untuk menerapkan.',
+        'success'
+      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Gagal memproses file logo.';
+      setLogoError(msg);
+      onNotifyToast(msg, 'error');
+    } finally {
+      setProcessingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoError(null);
+    setForm((prev) => ({ ...prev, logoDataUrl: '' }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -189,12 +192,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         );
       }
 
+      const senderTitle = form.shopName.trim() || 'PrintDesk';
       await sendOrderEmailViaGmail({
         accessToken: token,
         recipients: validVendorTo,
         cc: validVendorCc,
-        subject: `TES KONEKSI EMAIL PERCETAKAN - ${form.shopName || 'PrintDesk'}`.toUpperCase(),
-        bodyText: `Halo ${form.vendorName || 'Tim Percetakan'},\n\nIni adalah email tes dari ${form.shopName || 'PrintDesk'} untuk memastikan alamat email percetakan tujuan berfungsi dengan baik sebelum pengiriman order cetak.\n\nSalam,\n${form.shopName || 'PrintDesk'}`,
+        subject: `TES KONEKSI EMAIL PERCETAKAN - ${senderTitle}`.toUpperCase(),
+        bodyText: `Halo ${form.vendorName || 'Tim Percetakan'},\n\nIni adalah email tes dari ${senderTitle} untuk memastikan alamat email percetakan tujuan berfungsi dengan baik sebelum pengiriman order cetak.\n\nSalam,\n${senderTitle}`,
+        shopBranding: {
+          shopName: form.shopName,
+          shopAddress: form.shopAddress,
+          shopPhone: form.shopPhone,
+          logoDataUrl: form.logoDataUrl,
+        },
       });
 
       setTestEmailStatus({
@@ -228,59 +238,79 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             Profil Usaha Percetakan (Tampil di Nota & Email)
           </h2>
 
-          <div className="flex flex-wrap items-center gap-4 pb-2">
-            {form.logoDataUrl ? (
-              <div className="relative">
-                <img
-                  src={form.logoDataUrl}
-                  alt="Logo Usaha"
-                  className="w-16 h-16 object-contain rounded-lg border border-slate-200 dark:border-slate-700 bg-white p-1"
-                />
-                <button
-                  type="button"
-                  onClick={() => setForm((p) => ({ ...p, logoDataUrl: '' }))}
-                  className="absolute -top-2 -right-2 p-1 rounded-full bg-red-600 text-white"
-                  title="Hapus logo"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Logo Usaha
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <ShopLogo
+                logoDataUrl={form.logoDataUrl}
+                shopName={form.shopName}
+                size="lg"
+              />
+
+              <div className="space-y-2 flex-1 min-w-[220px]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer ${
+                      processingLogo ? 'opacity-60 pointer-events-none' : ''
+                    }`}
+                  >
+                    {processingLogo ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5" />
+                    )}
+                    {processingLogo ? 'Memproses logo...' : 'Unggah Logo'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
+                      disabled={processingLogo}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.currentTarget.value = '';
+                        if (f) void handleLogoUpload(f);
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    disabled={!form.logoDataUrl || processingLogo}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 dark:border-red-900/60 bg-white dark:bg-slate-800 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Hapus Logo
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  PNG/JPG/SVG, disarankan latar transparan, rasio persegi (maks. 2 MB; otomatis dikompres &lt; 200 KB).
+                </p>
               </div>
-            ) : (
-              <div className="w-16 h-16 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center text-xs text-slate-400">
-                Logo
+            </div>
+
+            {logoError && (
+              <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{logoError}</span>
               </div>
             )}
-
-            <div>
-              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
-                <Upload className="w-3.5 h-3.5" />
-                Upload Logo Usaha
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleLogoUpload(f);
-                  }}
-                  className="hidden"
-                />
-              </label>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                PNG / JPG. Otomatis diperkecil untuk cetak nota.
-              </p>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Nama Usaha Percetakan
+                Nama Usaha
               </label>
               <input
                 type="text"
-                required
+                maxLength={120}
                 value={form.shopName}
                 onChange={(e) => setForm({ ...form, shopName: e.target.value })}
+                placeholder="Nama percetakan Anda"
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
               />
             </div>

@@ -7,6 +7,7 @@ import {
   WORK_STATUS_META,
 } from '../types/printdesk';
 import { formatDateTimeId, formatRupiah } from '../utils/formatters';
+import { ShopLogo } from './ShopLogo';
 
 interface ReceiptPrintModalProps {
   open: boolean;
@@ -22,6 +23,12 @@ export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
   onClose,
 }) => {
   if (!open || !order) return null;
+
+  const displayShopName = settings.shopName.trim() || 'PrintDesk';
+  const contactParts = [
+    settings.shopPhone.trim() ? `Telp/WA: ${settings.shopPhone.trim()}` : '',
+    settings.shopEmail.trim(),
+  ].filter(Boolean);
 
   return (
     <div
@@ -61,28 +68,26 @@ export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
             {/* Header Nota */}
             <div className="flex items-start justify-between gap-4 pb-5 border-b border-slate-200">
               <div className="flex items-start gap-3">
-                {settings.logoDataUrl ? (
-                  <img
-                    src={settings.logoDataUrl}
-                    alt={settings.shopName}
-                    className="w-12 h-12 object-contain rounded-lg border border-slate-200"
-                  />
-                ) : (
-                  <div className="w-11 h-11 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">
-                    <Printer className="w-5 h-5" />
-                  </div>
-                )}
+                <ShopLogo
+                  logoDataUrl={settings.logoDataUrl}
+                  shopName={displayShopName}
+                  size="md"
+                />
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">
-                    {settings.shopName}
+                    {displayShopName}
                   </h2>
-                  <p className="text-xs text-slate-600">{settings.shopAddress}</p>
-                  <p className="text-xs text-slate-600">
-                    Telp/WA: {settings.shopPhone} · {settings.shopEmail}
-                  </p>
+                  {settings.shopAddress.trim() && (
+                    <p className="text-xs text-slate-600">{settings.shopAddress.trim()}</p>
+                  )}
+                  {contactParts.length > 0 && (
+                    <p className="text-xs text-slate-600">
+                      {contactParts.join(' · ')}
+                    </p>
+                  )}
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-right shrink-0">
                 <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">
                   Tanda Terima Order
                 </div>
@@ -155,7 +160,7 @@ export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right font-mono tabular-nums align-top">
-                      {order.specs.copies}x
+                      {order.specs.copies} {order.specs.qtyUnit || 'PCS'}
                     </td>
                     <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold align-top">
                       {formatRupiah(order.totalPrice)}

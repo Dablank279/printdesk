@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { User } from 'firebase/auth';
 import {
   AppPage,
@@ -21,6 +21,7 @@ import {
   deleteClientInFirestore,
   deleteOrderInFirestore,
   ensureUserProfile,
+  isFirestorePermissionError,
   loadLocalData,
   recordVendorEmailInFirestore,
   resetAllAppData,
@@ -41,6 +42,7 @@ import {
   exportBackupJson,
   getPickupUrgency,
 } from './utils/formatters';
+import { updateBrowserFavicon } from './utils/logoProcessor';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginView } from './components/LoginView';
 import { Sidebar } from './components/Sidebar';
@@ -55,7 +57,16 @@ import { DocumentPreviewModal } from './components/DocumentPreviewModal';
 import { EmailModal } from './components/EmailModal';
 import { VendorEmailModal } from './components/VendorEmailModal';
 import { ReceiptPrintModal } from './components/ReceiptPrintModal';
-import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  HardDrive,
+  Loader2,
+  LogIn,
+  RefreshCw,
+  ShieldAlert,
+  X,
+} from 'lucide-react';
 
 const DARK_MODE_STORAGE_KEY = 'printdesk_theme';
 const LOCAL_SESSION_KEY = 'printdesk_local_session';
@@ -92,9 +103,28 @@ function PrintDeskApp() {
   // Domain data state (selalu mulai kosong tanpa data contoh)
   const [orders, setOrders] = useState<PrintOrder[]>([]);
   const [clients, setClients] = useState<PrintClient[]>([]);
-  const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SHOP_SETTINGS);
+  const [settings, setSettings] = useState<ShopSettings>(
+    () => loadLocalData().settings
+  );
   const [loadingData, setLoadingData] = useState(false);
-  const [firestoreError, setFirestoreError] = useState<Error | null>(null);
+  const [firestoreError, setFirestoreError] = useState<{
+    message: string;
+    isPermissionDenied: boolean;
+  } | null>(null);
+  const [retryTrigger, setRetryTrigger] = useState(0);
+
+  const firestoreUnsubsRef = useRef<Array<() => void>>([]);
+
+  const detachFirestoreListeners = useCallback(() => {
+    for (const unsub of firestoreUnsubsRef.current) {
+      try {
+        unsub();
+      } catch {
+        // Abaikan error saat melepas listener
+      }
+    }
+    firestoreUnsubsRef.current = [];
+  }, []);
 
   // Navigation, Modal & Toast state
   const [activePage, setActivePage] = useState<AppPage>('dashboard');
@@ -125,90 +155,158 @@ function PrintDeskApp() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  if (firestoreError) {
-    throw firestoreError;
-  }
-
-  // Test Firestore connection on mount + init auth listener
+  // Sinkronkan favicon & judul tab browser dengan logo + nama usaha aktif
   useEffect(() => {
-    testFirestoreConnection();
+    updateBrowserFavicon(settings.logoDataUrl);
+    const trimmedName = settings.shopName.trim();
+    document.title = trimmedName
+      ? `${trimmedName} — PrintDesk`
+      : 'PrintDesk — Manajemen Order Percetakan';
+  }, [settings.logoDataUrl, settings.shopName]);
+
+  const handleFirestoreFailure = useCallback(
+    (err: unknown) => {
+      detachFirestoreListeners();
+      setLoadingData(false);
+      const isPerm = isFirestorePermissionError(err);
+      setFirestoreError({
+        isPermissionDenied: isPerm,
+        message: isPerm
+          ? 'Akses database Firestore ditolak atau sesi Google belum memiliki izin. Silakan masuk ulang dengan akun Google atau lanjutkan menggunakan Mode Lokal.'
+          : err instanceof Error
+            ? err.message
+            : 'Gagal terhubung ke database Firestore.',
+      });
+    },
+    [detachFirestoreListeners]
+  );
+
+  // Tunggu status autentikasi Firebase selesai sebelum membaca Firestore
+  useEffect(() => {
     const unsub = initAuth(
       (user, token) => {
         setFirebaseUser(user);
         setAccessToken(token || getAccessToken());
         setIsLocalMode(false);
+        setFirestoreError(null);
         localStorage.removeItem(LOCAL_SESSION_KEY);
         setAuthReady(true);
       },
       () => {
+        detachFirestoreListeners();
         setFirebaseUser(null);
         setAccessToken(null);
+        setFirestoreError(null);
+        setOrders([]);
+        setClients([]);
         setAuthReady(true);
       }
     );
-    return () => unsub();
-  }, []);
+    return () => {
+      unsub();
+      detachFirestoreListeners();
+    };
+  }, [detachFirestoreListeners]);
 
-  // Load & subscribe to data (Firestore when signed in, localStorage when in local mode)
+  // Load & subscribe to data hanya setelah authReady selesai
   useEffect(() => {
     if (!authReady) return;
 
     if (firebaseUser) {
-      let unsubOrders: (() => void) | undefined;
-      let unsubClients: (() => void) | undefined;
-      let unsubSettings: (() => void) | undefined;
-
+      let cancelled = false;
+      detachFirestoreListeners();
+      setFirestoreError(null);
       setLoadingData(true);
+
       const startFirestore = async () => {
         try {
-          await ensureUserProfile(firebaseUser);
+          const online = await testFirestoreConnection();
+          if (cancelled) return;
+          if (!online) {
+            throw new Error(
+              'Koneksi ke server Firestore sedang offline. Periksa jaringan internet Anda.'
+            );
+          }
 
-          unsubOrders = subscribeFirestoreOrders(
+          await ensureUserProfile(firebaseUser);
+          if (cancelled) return;
+
+          const unsubOrders = subscribeFirestoreOrders(
             firebaseUser.uid,
             (list) => {
+              if (cancelled) return;
               setOrders(list);
               setLoadingData(false);
             },
-            (err) => setFirestoreError(err)
+            (err) => {
+              if (!cancelled) handleFirestoreFailure(err);
+            }
           );
-          unsubClients = subscribeFirestoreClients(
+
+          const unsubClients = subscribeFirestoreClients(
             firebaseUser.uid,
-            (list) => setClients(list),
-            (err) => setFirestoreError(err)
+            (list) => {
+              if (!cancelled) setClients(list);
+            },
+            (err) => {
+              if (!cancelled) handleFirestoreFailure(err);
+            }
           );
-          unsubSettings = subscribeFirestoreSettings(
+
+          const unsubSettings = subscribeFirestoreSettings(
             firebaseUser.uid,
-            (s) => setSettings(s),
-            (err) => setFirestoreError(err)
+            (s) => {
+              if (!cancelled) setSettings(s);
+            },
+            (err) => {
+              if (!cancelled) handleFirestoreFailure(err);
+            }
           );
+
+          if (cancelled) {
+            unsubOrders();
+            unsubClients();
+            unsubSettings();
+            return;
+          }
+
+          firestoreUnsubsRef.current = [unsubOrders, unsubClients, unsubSettings];
         } catch (err) {
-          setLoadingData(false);
-          setFirestoreError(
-            err instanceof Error ? err : new Error('Gagal terhubung ke Firestore.')
-          );
+          if (!cancelled) {
+            handleFirestoreFailure(err);
+          }
         }
       };
 
-      startFirestore();
+      void startFirestore();
       return () => {
-        if (unsubOrders) unsubOrders();
-        if (unsubClients) unsubClients();
-        if (unsubSettings) unsubSettings();
+        cancelled = true;
+        detachFirestoreListeners();
       };
     }
 
     if (isLocalMode) {
+      detachFirestoreListeners();
+      setFirestoreError(null);
       const local = loadLocalData();
       setOrders(local.orders);
       setClients(local.clients);
       setSettings(local.settings);
       setLoadingData(false);
     }
-  }, [authReady, firebaseUser, isLocalMode]);
+  }, [
+    authReady,
+    firebaseUser,
+    isLocalMode,
+    retryTrigger,
+    detachFirestoreListeners,
+    handleFirestoreFailure,
+  ]);
 
   const handleGoogleLogin = async (): Promise<string | null> => {
     setIsLoggingIn(true);
     setLoginError(null);
+    setFirestoreError(null);
     try {
       const { user, accessToken: token } = await googleSignIn();
       setFirebaseUser(user);
@@ -227,18 +325,38 @@ function PrintDeskApp() {
   };
 
   const handleEnterLocalMode = () => {
+    detachFirestoreListeners();
+    setFirestoreError(null);
+    localStorage.setItem(LOCAL_SESSION_KEY, '1');
+    setIsLocalMode(true);
+  };
+
+  const handleSwitchToLocalFromError = async () => {
+    detachFirestoreListeners();
+    setFirestoreError(null);
+    if (firebaseUser) {
+      await logoutGoogle().catch(() => {});
+    }
+    setFirebaseUser(null);
+    setAccessToken(null);
     localStorage.setItem(LOCAL_SESSION_KEY, '1');
     setIsLocalMode(true);
   };
 
   const handleLogout = async () => {
+    detachFirestoreListeners();
     if (firebaseUser) {
-      await logoutGoogle();
+      await logoutGoogle().catch(() => {});
     }
     localStorage.removeItem(LOCAL_SESSION_KEY);
     setIsLocalMode(false);
     setFirebaseUser(null);
     setAccessToken(null);
+    setFirestoreError(null);
+    setOrders([]);
+    setClients([]);
+    setSettings(loadLocalData().settings);
+    setSelectedOrderId(null);
     setActivePage('dashboard');
   };
 
@@ -292,16 +410,27 @@ function PrintDeskApp() {
       remainingAmount: order.remainingAmount,
       pickedUp: order.pickedUp,
     };
-    if (firebaseUser) {
-      await updateOrderStatusInFirestore(firebaseUser.uid, order.id, patch);
-    } else {
-      const nextOrders = orders.map((o) =>
-        o.id === order.id
-          ? { ...o, ...patch, updatedAtIso: new Date().toISOString() }
-          : o
-      );
-      setOrders(nextOrders);
-      saveLocalOrders(nextOrders);
+    try {
+      if (firebaseUser) {
+        await updateOrderStatusInFirestore(firebaseUser.uid, order.id, patch);
+      } else {
+        const nextOrders = orders.map((o) =>
+          o.id === order.id
+            ? { ...o, ...patch, updatedAtIso: new Date().toISOString() }
+            : o
+        );
+        setOrders(nextOrders);
+        saveLocalOrders(nextOrders);
+      }
+    } catch (err) {
+      if (isFirestorePermissionError(err)) {
+        handleFirestoreFailure(err);
+      } else {
+        notifyToast(
+          err instanceof Error ? err.message : 'Gagal memperbarui status order.',
+          'error'
+        );
+      }
     }
   };
 
@@ -493,6 +622,8 @@ function PrintDeskApp() {
   if (!firebaseUser && !isLocalMode) {
     return (
       <LoginView
+        shopName={settings.shopName}
+        logoDataUrl={settings.logoDataUrl}
         onGoogleLogin={async () => {
           await handleGoogleLogin();
         }}
@@ -518,6 +649,7 @@ function PrintDeskApp() {
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
         shopName={settings.shopName}
+        logoDataUrl={settings.logoDataUrl}
         userDisplayName={firebaseUser?.displayName || 'Staf Percetakan'}
         userEmail={firebaseUser?.email || 'lokal@printdesk.id'}
         userPhotoUrl={firebaseUser?.photoURL || undefined}
@@ -553,7 +685,53 @@ function PrintDeskApp() {
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 no-print">
-          {loadingData ? (
+          {firestoreError ? (
+            <div className="max-w-lg mx-auto my-12 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/60 rounded-2xl p-6 sm:p-8 shadow-sm text-center space-y-5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                  {firestoreError.isPermissionDenied
+                    ? 'Akses Database Memerlukan Autentikasi'
+                    : 'Koneksi Database Terganggu'}
+                </h2>
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {firestoreError.message}
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-1">
+                <button
+                  type="button"
+                  disabled={isLoggingIn}
+                  onClick={() => void handleGoogleLogin()}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold disabled:opacity-60"
+                >
+                  <LogIn className="w-4 h-4" />
+                  {isLoggingIn ? 'Menghubungkan...' : 'Masuk dengan Google'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSwitchToLocalFromError()}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold"
+                >
+                  <HardDrive className="w-4 h-4" />
+                  Lanjut Mode Lokal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFirestoreError(null);
+                    setRetryTrigger((n) => n + 1);
+                  }}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Coba Lagi
+                </button>
+              </div>
+            </div>
+          ) : loadingData ? (
             <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
               <Loader2 className="w-7 h-7 animate-spin text-orange-600" />
               <span className="text-sm">Memuat data order dari cloud...</span>
@@ -694,6 +872,7 @@ function PrintDeskApp() {
       <DocumentPreviewModal
         open={Boolean(previewTarget)}
         order={previewTarget?.order || null}
+        settings={settings}
         initialFileIndex={previewTarget?.fileIndex || 0}
         accessToken={accessToken}
         onClose={() => setPreviewTarget(null)}

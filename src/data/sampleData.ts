@@ -2,10 +2,10 @@ import { ShopSettings } from '../types/printdesk';
 
 export const DEFAULT_SHOP_SETTINGS: ShopSettings = {
   ownerId: 'local',
-  shopName: 'PrintDesk Studio & Percetakan',
-  shopAddress: 'Jl. Merdeka Raya No. 88, Bandung',
-  shopPhone: '0812-3456-7890',
-  shopEmail: 'halo@printdesk.id',
+  shopName: '',
+  shopAddress: '',
+  shopPhone: '',
+  shopEmail: '',
   logoDataUrl: '',
   driveRootFolder: 'PrintDesk',
   emailSubjectTemplate: 'Dokumen Order {KodeOrder} - {NamaClient}',

@@ -345,7 +345,7 @@ export function subscribeFirestoreSettings(
       const data = snap.data();
       onData({
         ownerId: data.ownerId,
-        shopName: data.shopName || DEFAULT_SHOP_SETTINGS.shopName,
+        shopName: data.shopName ?? '',
         shopAddress: data.shopAddress || '',
         shopPhone: data.shopPhone || '',
         shopEmail: data.shopEmail || '',
@@ -528,11 +528,11 @@ export async function saveSettingsInFirestore(
     const existingSnap = await getDoc(ref);
     const payload = {
       ownerId: uid,
-      shopName: clampStr(settings.shopName, 120, 'PrintDesk'),
-      shopAddress: clampStr(settings.shopAddress, 240),
-      shopPhone: clampStr(settings.shopPhone, 40),
-      shopEmail: clampStr(settings.shopEmail, 160),
-      logoDataUrl: clampStr(settings.logoDataUrl || '', 110000),
+      shopName: clampStr(settings.shopName ?? '', 120),
+      shopAddress: clampStr(settings.shopAddress ?? '', 240),
+      shopPhone: clampStr(settings.shopPhone ?? '', 40),
+      shopEmail: clampStr(settings.shopEmail ?? '', 160),
+      logoDataUrl: clampStr(settings.logoDataUrl || '', 300000),
       driveRootFolder: clampStr(settings.driveRootFolder, 100, 'PrintDesk'),
       emailSubjectTemplate: clampStr(settings.emailSubjectTemplate, 200),
       emailBodyTemplate: clampStr(settings.emailBodyTemplate, 2000),
@@ -551,6 +551,17 @@ export async function saveSettingsInFirestore(
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
+}
+
+export function isFirestorePermissionError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('permission-denied') ||
+    lower.includes('missing or insufficient permissions') ||
+    lower.includes('permission_denied') ||
+    lower.includes('akses database firestore ditolak')
+  );
 }
 
 export async function resetAllAppData(params: {
