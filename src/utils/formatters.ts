@@ -246,6 +246,13 @@ export function buildWhatsAppUrl(order: PrintOrder, shopName: string): string {
   return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
 
+export const UNASSIGNED_SALES_LABEL = 'Belum ada penanggung jawab';
+
+export function getSalesDisplayName(salesName?: string): string {
+  const trimmed = (salesName || '').trim();
+  return trimmed || UNASSIGNED_SALES_LABEL;
+}
+
 export function interpolateTemplate(
   template: string,
   order: PrintOrder,
@@ -256,8 +263,9 @@ export function interpolateTemplate(
     .map((f) => `- ${f.name}: ${f.webViewLink}`)
     .join('\n');
   const displayShopName = settings.shopName.trim() || 'PrintDesk';
+  const salesDisplay = getSalesDisplayName(order.salesName);
 
-  return template
+  const rendered = template
     .replaceAll('{KodeOrder}', order.orderCode)
     .replaceAll('{NamaClient}', order.clientName)
     .replaceAll('{JenisCetakan}', order.printType)
@@ -266,7 +274,13 @@ export function interpolateTemplate(
     .replaceAll('{NominalDP}', formatRupiah(order.dpAmount))
     .replaceAll('{SisaPembayaran}', formatRupiah(order.remainingAmount))
     .replaceAll('{NamaUsaha}', displayShopName)
+    .replaceAll('{penangan_order}', salesDisplay)
     .replaceAll('{LinkDrive}', driveLinks || '(Belum ada link Google Drive)');
+
+  if (!template.includes('{penangan_order}') && order.salesName?.trim()) {
+    return `${rendered}\n\nYang menangani order: ${order.salesName.trim()}`;
+  }
+  return rendered;
 }
 
 export function buildVendorEmailSubject(params: {
@@ -297,8 +311,9 @@ export function interpolateVendorTemplate(
     .map((f) => `- ${f.name}: ${f.webViewLink}`)
     .join('\n');
   const displayShopName = settings.shopName.trim() || 'PrintDesk';
+  const salesDisplay = getSalesDisplayName(order.salesName);
 
-  return template
+  const rendered = template
     .replaceAll('{NamaPercetakan}', settings.vendorName || 'Percetakan')
     .replaceAll('{kode_order}', order.orderCode)
     .replaceAll('{nama_client}', order.clientName)
@@ -310,7 +325,13 @@ export function interpolateVendorTemplate(
     .replaceAll('{catatan}', order.notes || '-')
     .replaceAll('{waktu_pengambilan}', formatDateTimeId(order.pickupAt))
     .replaceAll('{nama_usaha}', displayShopName)
+    .replaceAll('{penangan_order}', salesDisplay)
     .replaceAll('{link_drive}', driveLinks || '(Terlampir pada email)');
+
+  if (!template.includes('{penangan_order}') && order.salesName?.trim()) {
+    return `${rendered}\n\nYang menangani order: ${order.salesName.trim()}`;
+  }
+  return rendered;
 }
 
 export function canSendToVendor(order: PrintOrder): {
@@ -375,6 +396,7 @@ export function exportOrdersToCsv(orders: PrintOrder[]): void {
     'Sudah Diambil',
     'Status Kirim Percetakan',
     'Catatan',
+    'Yang Menangani Order',
   ];
 
   const escapeCsv = (val: unknown) => {
@@ -412,6 +434,7 @@ export function exportOrdersToCsv(orders: PrintOrder[]): void {
       o.pickedUp ? 'Ya' : 'Belum',
       o.vendorSentAt ? `Sudah (${formatDateTimeId(o.vendorSentAt)})` : 'Belum dikirim',
       o.notes || '',
+      getSalesDisplayName(o.salesName),
     ]
       .map(escapeCsv)
       .join(',')

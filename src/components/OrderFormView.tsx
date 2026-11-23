@@ -34,7 +34,9 @@ import {
   generateOrderCode,
   generateSafeId,
   toLocalDateTimeInputValue,
+  UNASSIGNED_SALES_LABEL,
 } from '../utils/formatters';
+import { DEFAULT_SALES_NAMES } from '../data/sampleData';
 import { uploadFileToDrive } from '../services/googleDrive';
 import { cacheFileBlob } from '../services/storageService';
 
@@ -116,6 +118,7 @@ export const OrderFormView: React.FC<OrderFormViewProps> = ({
       : defaultPickup
   );
   const [notes, setNotes] = useState(initialOrder?.notes || '');
+  const [salesName, setSalesName] = useState(initialOrder?.salesName || '');
   const [files, setFiles] = useState<OrderFile[]>(initialOrder?.files || []);
 
   const [uploads, setUploads] = useState<UploadProgressItem[]>([]);
@@ -128,6 +131,20 @@ export const OrderFormView: React.FC<OrderFormViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const remainingAmount = Math.max(0, totalPrice - dpAmount);
+
+  const salesNameOptions = useMemo(() => {
+    const base = Array.isArray(settings.salesNames)
+      ? settings.salesNames
+      : DEFAULT_SALES_NAMES;
+    const current = (initialOrder?.salesName || '').trim();
+    if (current && !base.some((n) => n.toLowerCase() === current.toLowerCase())) {
+      return [...base, current];
+    }
+    return base;
+  }, [settings.salesNames, initialOrder?.salesName]);
+
+  const isLegacyUnassignedEdit =
+    mode === 'edit' && !(initialOrder?.salesName || '').trim();
 
   const liveVendorSubject = useMemo(
     () =>
@@ -429,6 +446,7 @@ export const OrderFormView: React.FC<OrderFormViewProps> = ({
       emailHistory: initialOrder?.emailHistory || [],
       vendorSentAt: initialOrder?.vendorSentAt || '',
       vendorEmailHistory: initialOrder?.vendorEmailHistory || [],
+      salesName: salesName.trim().slice(0, 60),
       createdAtIso: initialOrder?.createdAtIso || nowIso,
       updatedAtIso: nowIso,
     };
@@ -464,6 +482,10 @@ export const OrderFormView: React.FC<OrderFormViewProps> = ({
     }
     if (!pickupLocal) {
       setFormError('Waktu pengambilan wajib diisi.');
+      return;
+    }
+    if (!isLegacyUnassignedEdit && !salesName.trim()) {
+      setFormError('Yang Menangani Order wajib dipilih.');
       return;
     }
 
@@ -624,6 +646,29 @@ export const OrderFormView: React.FC<OrderFormViewProps> = ({
                 placeholder="client@email.com"
                 className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
               />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Yang Menangani Order {isLegacyUnassignedEdit ? '' : '*'}
+              </label>
+              <select
+                required={!isLegacyUnassignedEdit}
+                value={salesName}
+                onChange={(e) => setSalesName(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              >
+                <option value="">
+                  {isLegacyUnassignedEdit
+                    ? UNASSIGNED_SALES_LABEL
+                    : '-- Pilih Yang Menangani Order --'}
+                </option>
+                {salesNameOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="md:col-span-2">

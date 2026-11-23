@@ -50,6 +50,7 @@
         "emailHistory": { "type": "array" },
         "vendorSentAt": { "type": "string", "maxLength": 40 },
         "vendorEmailHistory": { "type": "array" },
+        "salesName": { "type": "string", "maxLength": 60 },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -111,6 +112,7 @@
         "vendorEmail": { "type": "string", "maxLength": 320 },
         "vendorCcEmail": { "type": "string", "maxLength": 320 },
         "vendorEmailBodyTemplate": { "type": "string", "maxLength": 2000 },
+        "salesNames": { "type": "array" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["ownerId", "shopName", "driveRootFolder", "emailSubjectTemplate", "emailBodyTemplate", "vendorEmail", "vendorEmailBodyTemplate", "updatedAt"]

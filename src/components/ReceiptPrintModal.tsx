@@ -6,7 +6,11 @@ import {
   ShopSettings,
   WORK_STATUS_META,
 } from '../types/printdesk';
-import { formatDateTimeId, formatRupiah } from '../utils/formatters';
+import {
+  formatDateTimeId,
+  formatRupiah,
+  getSalesDisplayName,
+} from '../utils/formatters';
 import { ShopLogo } from './ShopLogo';
 
 interface ReceiptPrintModalProps {
@@ -122,6 +126,9 @@ export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
                 </div>
                 <div className="text-slate-600">
                   Pembayaran: {PAYMENT_STATUS_META[order.paymentStatus].label}
+                </div>
+                <div className="text-slate-700 font-medium">
+                  Yang menangani order: {getSalesDisplayName(order.salesName)}
                 </div>
               </div>
             </div>

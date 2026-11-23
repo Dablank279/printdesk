@@ -15,6 +15,7 @@ import {
   Download,
   AlertCircle,
   RefreshCw,
+  UserCheck,
 } from 'lucide-react';
 import {
   EmailLog,
@@ -33,7 +34,10 @@ import {
   formatFileSize,
   formatRupiah,
   getPickupUrgency,
+  getSalesDisplayName,
+  UNASSIGNED_SALES_LABEL,
 } from '../utils/formatters';
+import { DEFAULT_SALES_NAMES } from '../data/sampleData';
 import { ConfirmModal } from './ConfirmModal';
 import { getCachedFileBlob } from '../services/storageService';
 import { deleteDriveFile, fetchDriveFileBlob } from '../services/googleDrive';
@@ -52,6 +56,7 @@ interface OrderDetailViewProps {
       'workStatus' | 'paymentStatus' | 'dpAmount' | 'remainingAmount' | 'pickedUp'
     >
   ) => Promise<void>;
+  onUpdateSalesName: (order: PrintOrder, nextSalesName: string) => Promise<void>;
   onRemoveFile: (order: PrintOrder, fileId: string) => Promise<void>;
   onOpenPreview: (order: PrintOrder, fileIndex?: number) => void;
   onOpenEmail: (order: PrintOrder) => void;
@@ -67,6 +72,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   onEdit,
   onDelete,
   onUpdateStatus,
+  onUpdateSalesName,
   onRemoveFile,
   onOpenPreview,
   onOpenEmail,
@@ -85,38 +91,81 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   const urgency = getPickupUrgency(order.pickupAt, order.pickedUp);
   const vendorCheck = canSendToVendor(order);
 
+  const configuredSalesNames =
+    Array.isArray(settings.salesNames) ? settings.salesNames : DEFAULT_SALES_NAMES;
+  const currentSalesTrimmed = (order.salesName || '').trim();
+  const salesNameOptions =
+    currentSalesTrimmed && !configuredSalesNames.includes(currentSalesTrimmed)
+      ? [currentSalesTrimmed, ...configuredSalesNames]
+      : configuredSalesNames;
+
   const handleWorkChange = async (nextWork: WorkStatus) => {
-    await onUpdateStatus(order, {
-      workStatus: nextWork,
-      paymentStatus: order.paymentStatus,
-      dpAmount: order.dpAmount,
-      remainingAmount: order.remainingAmount,
-      pickedUp: order.pickedUp,
-    });
+    setActionError(null);
+    try {
+      await onUpdateStatus(order, {
+        workStatus: nextWork,
+        paymentStatus: order.paymentStatus,
+        dpAmount: order.dpAmount,
+        remainingAmount: order.remainingAmount,
+        pickedUp: order.pickedUp,
+      });
+    } catch (err: unknown) {
+      setActionError(
+        err instanceof Error ? err.message : 'Gagal memperbarui status pengerjaan.'
+      );
+    }
   };
 
   const handlePaymentChange = async (nextPay: PaymentStatus) => {
+    setActionError(null);
     let nextDp = order.dpAmount;
     if (nextPay === 'lunas') nextDp = order.totalPrice;
     else if (nextPay === 'belum_dp') nextDp = 0;
 
-    await onUpdateStatus(order, {
-      workStatus: order.workStatus,
-      paymentStatus: nextPay,
-      dpAmount: nextDp,
-      remainingAmount: Math.max(0, order.totalPrice - nextDp),
-      pickedUp: order.pickedUp,
-    });
+    try {
+      await onUpdateStatus(order, {
+        workStatus: order.workStatus,
+        paymentStatus: nextPay,
+        dpAmount: nextDp,
+        remainingAmount: Math.max(0, order.totalPrice - nextDp),
+        pickedUp: order.pickedUp,
+      });
+    } catch (err: unknown) {
+      setActionError(
+        err instanceof Error ? err.message : 'Gagal memperbarui status pembayaran.'
+      );
+    }
   };
 
   const handleTogglePickedUp = async () => {
-    await onUpdateStatus(order, {
-      workStatus: !order.pickedUp ? 'selesai' : order.workStatus,
-      paymentStatus: order.paymentStatus,
-      dpAmount: order.dpAmount,
-      remainingAmount: order.remainingAmount,
-      pickedUp: !order.pickedUp,
-    });
+    setActionError(null);
+    try {
+      await onUpdateStatus(order, {
+        workStatus: !order.pickedUp ? 'selesai' : order.workStatus,
+        paymentStatus: order.paymentStatus,
+        dpAmount: order.dpAmount,
+        remainingAmount: order.remainingAmount,
+        pickedUp: !order.pickedUp,
+      });
+    } catch (err: unknown) {
+      setActionError(
+        err instanceof Error ? err.message : 'Gagal memperbarui status pengambilan.'
+      );
+    }
+  };
+
+  const handleSalesNameChange = async (nextSalesName: string) => {
+    if (!nextSalesName.trim()) return;
+    setActionError(null);
+    try {
+      await onUpdateSalesName(order, nextSalesName.trim());
+    } catch (err: unknown) {
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : 'Gagal memperbarui penanggung jawab order.'
+      );
+    }
   };
 
   const handleDownloadFile = async (f: OrderFile) => {
@@ -591,6 +640,34 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 <div className="text-sm font-mono font-semibold text-slate-900 dark:text-white mt-0.5">
                   {formatDateTimeId(order.pickupAt)}
                 </div>
+              </div>
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <label
+                  htmlFor="detail-sales-name"
+                  className="text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  Yang Menangani Order
+                </label>
+                <div className="text-xs font-semibold text-slate-900 dark:text-white mb-1.5">
+                  {getSalesDisplayName(order.salesName)}
+                </div>
+                <select
+                  id="detail-sales-name"
+                  value={currentSalesTrimmed}
+                  onChange={(e) => void handleSalesNameChange(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  aria-label="Ubah yang menangani order"
+                >
+                  {!currentSalesTrimmed && (
+                    <option value="">{UNASSIGNED_SALES_LABEL}</option>
+                  )}
+                  {salesNameOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

@@ -70,6 +70,7 @@ export interface PrintOrder {
   emailHistory: EmailLog[];
   vendorSentAt?: string;
   vendorEmailHistory: EmailLog[];
+  salesName?: string;
   createdAtIso: string;
   updatedAtIso: string;
 }
@@ -100,6 +101,7 @@ export interface ShopSettings {
   vendorEmail: string;
   vendorCcEmail: string;
   vendorEmailBodyTemplate: string;
+  salesNames?: string[];
   updatedAtIso: string;
 }
 

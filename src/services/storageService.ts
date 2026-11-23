@@ -23,7 +23,7 @@ import {
   WorkStatus,
 } from '../types/printdesk';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { DEFAULT_SHOP_SETTINGS } from '../data/sampleData';
+import { DEFAULT_SALES_NAMES, DEFAULT_SHOP_SETTINGS } from '../data/sampleData';
 import { resetOrderSequences } from '../utils/formatters';
 
 const LOCAL_ORDERS_KEY = 'printdesk_local_orders_v1';
@@ -123,6 +123,24 @@ function clampNum(val: unknown, min = 0, max = 10000000000): number {
   return Math.min(max, Math.max(min, n));
 }
 
+export function sanitizeSalesNames(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    return [...DEFAULT_SALES_NAMES];
+  }
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of raw) {
+    const clean = clampStr(item, 60);
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+    if (result.length >= 20) break;
+  }
+  return result;
+}
+
 function sanitizeFiles(files: OrderFile[]): OrderFile[] {
   return files.slice(0, 20).map((f) => ({
     id: clampStr(f.id || `file_${Date.now()}`, 128, 'file_1'),
@@ -192,6 +210,7 @@ function buildFirestoreOrderFields(uid: string, order: PrintOrder) {
     emailHistory: sanitizeEmailHistory(order.emailHistory || []),
     vendorSentAt: clampStr(order.vendorSentAt || '', 40),
     vendorEmailHistory: sanitizeEmailHistory(order.vendorEmailHistory || []),
+    salesName: clampStr(order.salesName || '', 60),
   };
 }
 
@@ -275,6 +294,7 @@ export function subscribeFirestoreOrders(
           emailHistory: data.emailHistory || [],
           vendorSentAt: data.vendorSentAt || '',
           vendorEmailHistory: data.vendorEmailHistory || [],
+          salesName: typeof data.salesName === 'string' ? data.salesName : '',
           createdAtIso: timestampToIso(data.createdAt, nowIso),
           updatedAtIso: timestampToIso(data.updatedAt, nowIso),
         };
@@ -360,6 +380,9 @@ export function subscribeFirestoreSettings(
         vendorCcEmail: data.vendorCcEmail ?? '',
         vendorEmailBodyTemplate:
           data.vendorEmailBodyTemplate || DEFAULT_SHOP_SETTINGS.vendorEmailBodyTemplate,
+        salesNames: Array.isArray(data.salesNames)
+          ? sanitizeSalesNames(data.salesNames)
+          : [...DEFAULT_SALES_NAMES],
         updatedAtIso: timestampToIso(data.updatedAt, new Date().toISOString()),
       });
     },
@@ -417,6 +440,22 @@ export async function updateOrderStatusInFirestore(
       dpAmount: clampNum(patch.dpAmount),
       remainingAmount: clampNum(patch.remainingAmount),
       pickedUp: Boolean(patch.pickedUp),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function updateOrderSalesNameInFirestore(
+  uid: string,
+  orderId: string,
+  salesName: string
+): Promise<void> {
+  const path = `users/${uid}/orders/${orderId}`;
+  try {
+    await updateDoc(doc(db, 'users', uid, 'orders', orderId), {
+      salesName: clampStr(salesName, 60),
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -540,6 +579,7 @@ export async function saveSettingsInFirestore(
       vendorEmail: clampStr(settings.vendorEmail || '', 320),
       vendorCcEmail: clampStr(settings.vendorCcEmail || '', 320),
       vendorEmailBodyTemplate: clampStr(settings.vendorEmailBodyTemplate || '', 2000),
+      salesNames: sanitizeSalesNames(settings.salesNames),
       updatedAt: serverTimestamp(),
     };
     if (!existingSnap.exists()) {
@@ -631,9 +671,16 @@ export function loadLocalData(): {
       vendorEmailHistory: o.vendorEmailHistory || [],
     }));
     const clients: PrintClient[] = rawClients ? JSON.parse(rawClients) : [];
-    const settings: ShopSettings = rawSettings
-      ? { ...DEFAULT_SHOP_SETTINGS, ...JSON.parse(rawSettings) }
-      : { ...DEFAULT_SHOP_SETTINGS };
+    const parsedSettings = rawSettings ? JSON.parse(rawSettings) : null;
+    const settings: ShopSettings = parsedSettings
+      ? {
+          ...DEFAULT_SHOP_SETTINGS,
+          ...parsedSettings,
+          salesNames: Array.isArray(parsedSettings.salesNames)
+            ? sanitizeSalesNames(parsedSettings.salesNames)
+            : [...DEFAULT_SALES_NAMES],
+        }
+      : { ...DEFAULT_SHOP_SETTINGS, salesNames: [...DEFAULT_SALES_NAMES] };
 
     return { orders, clients, settings };
   } catch {

@@ -34,6 +34,7 @@ import {
   subscribeFirestoreOrders,
   subscribeFirestoreSettings,
   updateOrderInFirestore,
+  updateOrderSalesNameInFirestore,
   updateOrderStatusInFirestore,
 } from './services/storageService';
 import { DEFAULT_SHOP_SETTINGS } from './data/sampleData';
@@ -441,16 +442,51 @@ function PrintDeskApp() {
       'workStatus' | 'paymentStatus' | 'dpAmount' | 'remainingAmount' | 'pickedUp'
     >
   ) => {
-    if (firebaseUser) {
-      await updateOrderStatusInFirestore(firebaseUser.uid, order.id, patch);
-    } else {
-      const nextOrders = orders.map((o) =>
-        o.id === order.id
-          ? { ...o, ...patch, updatedAtIso: new Date().toISOString() }
-          : o
-      );
-      setOrders(nextOrders);
-      saveLocalOrders(nextOrders);
+    try {
+      if (firebaseUser) {
+        await updateOrderStatusInFirestore(firebaseUser.uid, order.id, patch);
+      } else {
+        const nextOrders = orders.map((o) =>
+          o.id === order.id
+            ? { ...o, ...patch, updatedAtIso: new Date().toISOString() }
+            : o
+        );
+        setOrders(nextOrders);
+        saveLocalOrders(nextOrders);
+      }
+    } catch (err) {
+      if (isFirestorePermissionError(err)) {
+        handleFirestoreFailure(err);
+      } else {
+        throw err;
+      }
+    }
+  };
+
+  const handleUpdateOrderSalesName = async (
+    order: PrintOrder,
+    nextSalesName: string
+  ) => {
+    const trimmed = nextSalesName.trim();
+    try {
+      if (firebaseUser) {
+        await updateOrderSalesNameInFirestore(firebaseUser.uid, order.id, trimmed);
+      } else {
+        const nextOrders = orders.map((o) =>
+          o.id === order.id
+            ? { ...o, salesName: trimmed, updatedAtIso: new Date().toISOString() }
+            : o
+        );
+        setOrders(nextOrders);
+        saveLocalOrders(nextOrders);
+      }
+      notifyToast('Penanggung jawab order diperbarui.', 'success');
+    } catch (err) {
+      if (isFirestorePermissionError(err)) {
+        handleFirestoreFailure(err);
+      } else {
+        throw err;
+      }
     }
   };
 
@@ -802,6 +838,7 @@ function PrintDeskApp() {
                   onEdit={() => setActivePage('order-edit')}
                   onDelete={handleDeleteOrder}
                   onUpdateStatus={handleUpdateOrderStatus}
+                  onUpdateSalesName={handleUpdateOrderSalesName}
                   onRemoveFile={handleRemoveFileFromOrder}
                   onOpenPreview={(ord, idx = 0) =>
                     setPreviewTarget({ order: ord, fileIndex: idx })
@@ -817,13 +854,22 @@ function PrintDeskApp() {
                   orders={orders}
                   settings={settings}
                   onTogglePickedUp={async (ord) => {
-                    await handleUpdateOrderStatus(ord, {
-                      workStatus: !ord.pickedUp ? 'selesai' : ord.workStatus,
-                      paymentStatus: ord.paymentStatus,
-                      dpAmount: ord.dpAmount,
-                      remainingAmount: ord.remainingAmount,
-                      pickedUp: !ord.pickedUp,
-                    });
+                    try {
+                      await handleUpdateOrderStatus(ord, {
+                        workStatus: !ord.pickedUp ? 'selesai' : ord.workStatus,
+                        paymentStatus: ord.paymentStatus,
+                        dpAmount: ord.dpAmount,
+                        remainingAmount: ord.remainingAmount,
+                        pickedUp: !ord.pickedUp,
+                      });
+                    } catch (err) {
+                      notifyToast(
+                        err instanceof Error
+                          ? err.message
+                          : 'Gagal memperbarui status pengambilan.',
+                        'error'
+                      );
+                    }
                   }}
                   onOpenDetail={(id) => {
                     setSelectedOrderId(id);

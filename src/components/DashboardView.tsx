@@ -14,6 +14,10 @@ import {
   RotateCcw,
   GripVertical,
   Plus,
+  ChevronDown,
+  ChevronUp,
+  User,
+  Users,
 } from 'lucide-react';
 import {
   PAYMENT_STATUS_META,
@@ -22,6 +26,7 @@ import {
   WORK_STATUS_META,
   WorkStatus,
 } from '../types/printdesk';
+import { DEFAULT_SALES_NAMES } from '../data/sampleData';
 import {
   buildWhatsAppUrl,
   canSendToVendor,
@@ -29,6 +34,8 @@ import {
   formatDateTimeId,
   formatRupiah,
   getPickupUrgency,
+  getSalesDisplayName,
+  UNASSIGNED_SALES_LABEL,
 } from '../utils/formatters';
 
 interface DashboardViewProps {
@@ -79,13 +86,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [paymentFilter, setPaymentFilter] = useState<
     'all' | PrintOrder['paymentStatus']
   >('all');
+  const [salesFilter, setSalesFilter] = useState<string>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<
     'all' | 'overdue' | 'today' | 'tomorrow'
   >('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [rekapExpanded, setRekapExpanded] = useState<boolean>(true);
   const [draggedOrderId, setDraggedOrderId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<WorkStatus | null>(null);
+
+  const salesFilterOptions = useMemo(() => {
+    const base = Array.isArray(settings.salesNames)
+      ? settings.salesNames
+      : DEFAULT_SALES_NAMES;
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const raw of base) {
+      const t = raw.trim();
+      if (t && !seen.has(t)) {
+        seen.add(t);
+        list.push(t);
+      }
+    }
+    for (const o of orders) {
+      const t = (o.salesName || '').trim();
+      if (t && !seen.has(t)) {
+        seen.add(t);
+        list.push(t);
+      }
+    }
+    return list;
+  }, [settings.salesNames, orders]);
+
+  const hasUnassignedOrders = useMemo(
+    () => orders.some((o) => !o.salesName?.trim()),
+    [orders]
+  );
+
+  const ordersBySales = useMemo(() => {
+    if (salesFilter === 'all') return orders;
+    if (salesFilter === '__unassigned__') {
+      return orders.filter((o) => !o.salesName?.trim());
+    }
+    return orders.filter((o) => (o.salesName || '').trim() === salesFilter);
+  }, [orders, salesFilter]);
 
   const stats = useMemo(() => {
     let totalValue = 0;
@@ -95,7 +140,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     let countProses = 0;
     let countSelesai = 0;
 
-    for (const o of orders) {
+    for (const o of ordersBySales) {
       totalValue += o.totalPrice;
       totalDp += o.dpAmount;
       totalRemaining += o.remainingAmount;
@@ -105,7 +150,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     return {
-      totalOrders: orders.length,
+      totalOrders: ordersBySales.length,
       totalValue,
       totalDp,
       totalRemaining,
@@ -113,17 +158,91 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       countProses,
       countSelesai,
     };
-  }, [orders]);
+  }, [ordersBySales]);
+
+  const dateFilteredOrders = useMemo(() => {
+    return orders.filter((o) => {
+      if (dateFrom) {
+        const fromMs = new Date(`${dateFrom}T00:00:00`).getTime();
+        if (new Date(o.createdAtIso).getTime() < fromMs) return false;
+      }
+      if (dateTo) {
+        const toMs = new Date(`${dateTo}T23:59:59`).getTime();
+        if (new Date(o.createdAtIso).getTime() > toMs) return false;
+      }
+      return true;
+    });
+  }, [orders, dateFrom, dateTo]);
+
+  const rekapRows = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        orderCount: number;
+        totalValue: number;
+        totalDp: number;
+        totalRemaining: number;
+        completedCount: number;
+      }
+    >();
+
+    for (const name of salesFilterOptions) {
+      map.set(name, {
+        key: name,
+        label: name,
+        orderCount: 0,
+        totalValue: 0,
+        totalDp: 0,
+        totalRemaining: 0,
+        completedCount: 0,
+      });
+    }
+
+    for (const o of dateFilteredOrders) {
+      const trimmed = (o.salesName || '').trim();
+      const key = trimmed || '__unassigned__';
+      const label = trimmed || UNASSIGNED_SALES_LABEL;
+      let row = map.get(key);
+      if (!row) {
+        row = {
+          key,
+          label,
+          orderCount: 0,
+          totalValue: 0,
+          totalDp: 0,
+          totalRemaining: 0,
+          completedCount: 0,
+        };
+        map.set(key, row);
+      }
+      row.orderCount += 1;
+      row.totalValue += o.totalPrice;
+      row.totalDp += o.dpAmount;
+      row.totalRemaining += o.remainingAmount;
+      if (o.workStatus === 'selesai') {
+        row.completedCount += 1;
+      }
+    }
+
+    return Array.from(map.values());
+  }, [salesFilterOptions, dateFilteredOrders]);
 
   const filteredOrders = useMemo(() => {
     const q = globalSearch.trim().toLowerCase();
     return orders.filter((o) => {
       if (q) {
-        const hay = `${o.orderCode} ${o.clientName} ${o.clientPhone} ${o.printType} ${o.category}`.toLowerCase();
+        const hay = `${o.orderCode} ${o.clientName} ${o.clientPhone} ${o.printType} ${o.category} ${o.salesName || ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       if (statusFilter !== 'all' && o.workStatus !== statusFilter) return false;
       if (paymentFilter !== 'all' && o.paymentStatus !== paymentFilter) return false;
+      if (salesFilter === '__unassigned__') {
+        if (o.salesName?.trim()) return false;
+      } else if (salesFilter !== 'all') {
+        if ((o.salesName || '').trim() !== salesFilter) return false;
+      }
 
       if (urgencyFilter !== 'all') {
         const urg = getPickupUrgency(o.pickupAt, o.pickedUp);
@@ -142,12 +261,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }
       return true;
     });
-  }, [orders, globalSearch, statusFilter, paymentFilter, urgencyFilter, dateFrom, dateTo]);
+  }, [
+    orders,
+    globalSearch,
+    statusFilter,
+    paymentFilter,
+    salesFilter,
+    urgencyFilter,
+    dateFrom,
+    dateTo,
+  ]);
 
   const handleResetFilters = () => {
     onGlobalSearchChange('');
     setStatusFilter('all');
     setPaymentFilter('all');
+    setSalesFilter('all');
     setUrgencyFilter('all');
     setDateFrom('');
     setDateTo('');
@@ -167,6 +296,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     Boolean(globalSearch) ||
     statusFilter !== 'all' ||
     paymentFilter !== 'all' ||
+    salesFilter !== 'all' ||
     urgencyFilter !== 'all' ||
     Boolean(dateFrom) ||
     Boolean(dateTo);
@@ -232,6 +362,112 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             Piutang menunggu pelunasan client
           </div>
         </div>
+      </div>
+
+      {/* Collapsible Recap Table per Handler */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setRekapExpanded((prev) => !prev)}
+          aria-expanded={rekapExpanded}
+          className="w-full px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-100">
+            <Users className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0" />
+            <span>Rekap per Penangan Order</span>
+            {(dateFrom || dateTo) && (
+              <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                (Mengikuti filter tanggal)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+            <span>Klik nama untuk filter papan</span>
+            {rekapExpanded ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </div>
+        </button>
+
+        {rekapExpanded && (
+          <div className="border-t border-slate-100 dark:border-slate-800 overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800">
+                  <th className="py-2.5 px-4 font-semibold whitespace-nowrap">
+                    Penangan Order
+                  </th>
+                  <th className="py-2.5 px-4 font-semibold text-right whitespace-nowrap">
+                    Jumlah Order
+                  </th>
+                  <th className="py-2.5 px-4 font-semibold text-right whitespace-nowrap">
+                    Total Nilai Order
+                  </th>
+                  <th className="py-2.5 px-4 font-semibold text-right whitespace-nowrap">
+                    Total DP Masuk
+                  </th>
+                  <th className="py-2.5 px-4 font-semibold text-right whitespace-nowrap">
+                    Total Sisa Tagihan
+                  </th>
+                  <th className="py-2.5 px-4 font-semibold text-right whitespace-nowrap">
+                    Order Selesai
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {rekapRows.map((row) => {
+                  const isSelected = salesFilter === row.key;
+                  return (
+                    <tr
+                      key={row.key}
+                      className={`transition-colors ${
+                        isSelected
+                          ? 'bg-orange-50/70 dark:bg-orange-950/30'
+                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <td className="py-2.5 px-4 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSalesFilter((prev) =>
+                              prev === row.key ? 'all' : row.key
+                            )
+                          }
+                          className={`inline-flex items-center gap-1.5 font-semibold hover:underline ${
+                            isSelected
+                              ? 'text-orange-600 dark:text-orange-400'
+                              : 'text-slate-900 dark:text-white'
+                          }`}
+                        >
+                          <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{row.label}</span>
+                        </button>
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                        {row.orderCount}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                        {formatRupiah(row.totalValue)}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        {formatRupiah(row.totalDp)}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums text-orange-600 dark:text-orange-400 whitespace-nowrap">
+                        {formatRupiah(row.totalRemaining)}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                        {row.completedCount}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Filter & View Controls Toolbar */}
@@ -320,6 +556,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <option value="belum_dp">Belum DP</option>
             <option value="sudah_dp">Sudah DP</option>
             <option value="lunas">Lunas</option>
+          </select>
+
+          <select
+            value={salesFilter}
+            onChange={(e) => setSalesFilter(e.target.value)}
+            className="px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+            aria-label="Filter penangan order"
+          >
+            <option value="all">Semua Penangan Order</option>
+            {salesFilterOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+            {hasUnassignedOrders && (
+              <option value="__unassigned__">{UNASSIGNED_SALES_LABEL}</option>
+            )}
           </select>
 
           <select
@@ -510,6 +763,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             >
                               {payMeta.label}
                             </span>
+                            <span
+                              title="Yang menangani order"
+                              className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded border bg-slate-100/80 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+                            >
+                              <User className="w-3 h-3 text-slate-400 shrink-0" />
+                              {getSalesDisplayName(order.salesName)}
+                            </span>
                             {order.vendorSentAt ? (
                               <span className="text-[11px] font-medium px-2 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-900">
                                 Sudah dikirim ke percetakan ({formatDateTimeId(order.vendorSentAt)})
@@ -627,6 +887,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300">
                   <th className="py-3 px-4 font-semibold whitespace-nowrap">Kode Order</th>
                   <th className="py-3 px-4 font-semibold">Client & Cetakan</th>
+                  <th className="py-3 px-4 font-semibold whitespace-nowrap">Ditangani oleh</th>
                   <th className="py-3 px-4 font-semibold whitespace-nowrap">Pengerjaan</th>
                   <th className="py-3 px-4 font-semibold whitespace-nowrap">Pembayaran</th>
                   <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Total / Sisa</th>
@@ -678,6 +939,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             </span>
                           )}
                         </div>
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap text-slate-700 dark:text-slate-200 font-medium">
+                        {getSalesDisplayName(order.salesName)}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         <span

@@ -7,6 +7,7 @@
 4. Array fields (`files` <= 20 items, `emailHistory` <= 50 items) are bounded and type-guarded.
 5. `workStatus` is strictly constrained to `['belum_dp', 'dalam_proses', 'selesai']` and `paymentStatus` to `['belum_dp', 'sudah_dp', 'lunas']`.
 6. Financial amounts (`totalPrice`, `dpAmount`, `remainingAmount`) must be numeric and non-negative (`>= 0`).
+7. Optional `salesName` on orders is a string up to 60 characters; optional `salesNames` on settings is a list of up to 20 strings (max 60 characters each).
 
 ## 2. Dirty Dozen Attack Vectors (Verified Denied)
 1. Unauthenticated read/write to `/users/uid/orders/o1`.

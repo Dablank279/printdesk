@@ -11,8 +11,13 @@ import {
   AlertCircle,
   Download,
   AlertTriangle,
+  Users,
+  Plus,
+  Edit2,
+  X,
 } from 'lucide-react';
 import { ShopSettings } from '../types/printdesk';
+import { DEFAULT_SALES_NAMES } from '../data/sampleData';
 import { parseEmailRecipients, sendOrderEmailViaGmail } from '../services/gmailApi';
 import { processLogoFile } from '../utils/logoProcessor';
 import { ResetDataModal } from './ResetDataModal';
@@ -36,6 +41,7 @@ const CLIENT_TEMPLATE_VARIABLES = [
   '{KodeOrder}',
   '{NamaClient}',
   '{JenisCetakan}',
+  '{penangan_order}',
   '{WaktuPengambilan}',
   '{TotalHarga}',
   '{NominalDP}',
@@ -47,6 +53,7 @@ const CLIENT_TEMPLATE_VARIABLES = [
 const VENDOR_TEMPLATE_VARIABLES = [
   '{kode_order}',
   '{nama_client}',
+  '{penangan_order}',
   '{jenis_cetakan}',
   '{bahan}',
   '{ukuran}',
@@ -85,9 +92,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [logoError, setLogoError] = useState<string | null>(null);
   const [resetModalOpen, setResetModalOpen] = useState(false);
 
+  // State daftar yang menangani order
+  const [newSalesName, setNewSalesName] = useState('');
+  const [editingSalesIdx, setEditingSalesIdx] = useState<number | null>(null);
+  const [editingSalesValue, setEditingSalesValue] = useState('');
+  const [salesError, setSalesError] = useState<string | null>(null);
+  const [savingSalesList, setSavingSalesList] = useState(false);
+  const skipNextFullFormSyncRef = React.useRef(false);
+
   useEffect(() => {
+    if (skipNextFullFormSyncRef.current) {
+      skipNextFullFormSyncRef.current = false;
+      setForm((prev) => ({
+        ...prev,
+        salesNames: Array.isArray(settings.salesNames)
+          ? settings.salesNames
+          : [...DEFAULT_SALES_NAMES],
+      }));
+      return;
+    }
     setForm(settings);
   }, [settings]);
+
+  const salesList = Array.isArray(form.salesNames)
+    ? form.salesNames
+    : DEFAULT_SALES_NAMES;
 
   const { valid: validVendorTo, invalid: invalidVendorTo } = parseEmailRecipients(
     form.vendorEmail || ''
@@ -124,6 +153,104 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setForm((prev) => ({ ...prev, logoDataUrl: '' }));
   };
 
+  const persistSalesList = async (nextList: string[], successMessage: string) => {
+    const prevList = salesList;
+    setSalesError(null);
+    setSavingSalesList(true);
+    setForm((prev) => ({ ...prev, salesNames: nextList }));
+    skipNextFullFormSyncRef.current = true;
+    try {
+      await onSaveSettings({
+        ...settings,
+        salesNames: nextList,
+        updatedAtIso: new Date().toISOString(),
+      });
+      onNotifyToast(successMessage, 'success');
+    } catch (err: unknown) {
+      skipNextFullFormSyncRef.current = false;
+      setForm((prev) => ({ ...prev, salesNames: prevList }));
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Gagal menyimpan daftar penangan order.';
+      setSalesError(msg);
+      onNotifyToast(msg, 'error');
+    } finally {
+      setSavingSalesList(false);
+    }
+  };
+
+  const handleAddSalesName = async () => {
+    setSalesError(null);
+    const trimmed = newSalesName.trim();
+    if (!trimmed) {
+      setSalesError('Nama penangan order wajib diisi.');
+      return;
+    }
+    if (trimmed.length > 60) {
+      setSalesError('Nama penangan order maksimal 60 karakter.');
+      return;
+    }
+    if (salesList.length >= 20) {
+      setSalesError('Maksimal 20 nama penangan order.');
+      return;
+    }
+    if (salesList.some((n) => n.toLowerCase() === trimmed.toLowerCase())) {
+      setSalesError('Nama tersebut sudah ada dalam daftar.');
+      return;
+    }
+
+    const nextList = [...salesList, trimmed];
+    setNewSalesName('');
+    await persistSalesList(nextList, `Nama "${trimmed}" berhasil ditambahkan.`);
+  };
+
+  const handleStartEditSales = (idx: number) => {
+    setSalesError(null);
+    setEditingSalesIdx(idx);
+    setEditingSalesValue(salesList[idx] || '');
+  };
+
+  const handleSaveEditSales = async () => {
+    if (editingSalesIdx === null) return;
+    setSalesError(null);
+    const trimmed = editingSalesValue.trim();
+    if (!trimmed) {
+      setSalesError('Nama penangan order wajib diisi.');
+      return;
+    }
+    if (trimmed.length > 60) {
+      setSalesError('Nama penangan order maksimal 60 karakter.');
+      return;
+    }
+    if (
+      salesList.some(
+        (n, i) => i !== editingSalesIdx && n.toLowerCase() === trimmed.toLowerCase()
+      )
+    ) {
+      setSalesError('Nama tersebut sudah ada dalam daftar.');
+      return;
+    }
+
+    const nextList = salesList.map((item, i) =>
+      i === editingSalesIdx ? trimmed : item
+    );
+    setEditingSalesIdx(null);
+    setEditingSalesValue('');
+    await persistSalesList(nextList, 'Nama penangan order berhasil diperbarui.');
+  };
+
+  const handleDeleteSalesName = async (idx: number) => {
+    setSalesError(null);
+    const removed = salesList[idx];
+    if (editingSalesIdx === idx) {
+      setEditingSalesIdx(null);
+      setEditingSalesValue('');
+    }
+    const nextList = salesList.filter((_, i) => i !== idx);
+    await persistSalesList(nextList, `Nama "${removed}" dihapus dari daftar.`);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -146,6 +273,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       await onSaveSettings({
         ...form,
+        salesNames: salesList,
         vendorName: form.vendorName.trim() || 'Percetakan',
         vendorEmail: validVendorTo.join(', '),
         vendorCcEmail: validVendorCc.join(', '),
@@ -368,6 +496,147 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               />
             </div>
           </div>
+        </div>
+
+        {/* Daftar Yang Menangani Order */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-orange-600" />
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Daftar Yang Menangani Order
+              </h2>
+            </div>
+            <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
+              {salesList.length}/20 nama
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Digunakan pada pilihan &quot;Yang Menangani Order&quot; saat membuat atau mengubah order. Menghapus nama dari daftar tidak akan mengubah order lama yang sudah mencatat nama tersebut.
+          </p>
+
+          {salesError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{salesError}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              maxLength={60}
+              value={newSalesName}
+              disabled={savingSalesList || salesList.length >= 20}
+              onChange={(e) => {
+                setNewSalesName(e.target.value);
+                if (salesError) setSalesError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleAddSalesName();
+                }
+              }}
+              placeholder="Tambah nama penangan / operator baru..."
+              className="flex-1 px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:opacity-60"
+            />
+            <button
+              type="button"
+              disabled={savingSalesList || salesList.length >= 20}
+              onClick={() => void handleAddSalesName()}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 dark:bg-orange-600 hover:bg-slate-800 dark:hover:bg-orange-500 text-white text-xs font-semibold disabled:opacity-50 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Tambah Nama
+            </button>
+          </div>
+
+          {salesList.length === 0 ? (
+            <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-xs text-slate-500 dark:text-slate-400">
+              Daftar kosong. Tambahkan minimal satu nama yang menangani order.
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              {salesList.map((name, idx) => {
+                const isEditing = editingSalesIdx === idx;
+                return (
+                  <div
+                    key={`${name}-${idx}`}
+                    className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-slate-900"
+                  >
+                    {isEditing ? (
+                      <div className="flex-1 flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          maxLength={60}
+                          autoFocus
+                          value={editingSalesValue}
+                          onChange={(e) => setEditingSalesValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void handleSaveEditSales();
+                            } else if (e.key === 'Escape') {
+                              setEditingSalesIdx(null);
+                              setEditingSalesValue('');
+                            }
+                          }}
+                          className="flex-1 min-w-[160px] px-3 py-1.5 text-sm rounded-lg border border-orange-400 dark:border-orange-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                        />
+                        <button
+                          type="button"
+                          disabled={savingSalesList}
+                          onClick={() => void handleSaveEditSales()}
+                          className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold disabled:opacity-60"
+                        >
+                          Simpan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSalesIdx(null);
+                            setEditingSalesValue('');
+                          }}
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+                          title="Batal edit"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-sm font-medium text-slate-900 dark:text-white">
+                          {name}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={savingSalesList}
+                            onClick={() => handleStartEditSales(idx)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingSalesList}
+                            onClick={() => void handleDeleteSalesName(idx)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-red-200 dark:border-red-900/60 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Hapus
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Vendor / Printing Shop Email Settings */}
